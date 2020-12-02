@@ -90,9 +90,11 @@ contract AdminRole is Context, Ownable {
       }
       return exist;
     }
-    // revoke SC owner's permission
+    
+    // revoke the SC owner's permission
+    // requires multisig 2/3
     function m_signaturesTransferOwnership(address newOwner) public onlyOwnerOrAdmin {
-      require(isOwner() || checkValidMultiSignatures(), "other admins need to sign");
+      require(isOwner() || checkValidMultiSignatures(), "multisig is mandatory");
       transferOwnership(newOwner);
       revokeAllMultiSignatures();
     }
@@ -199,7 +201,7 @@ contract SmartContract is AdminRole{
   // owner or admin may withdraw ETH from this SC, multisig is mandatory
 
   function ethout(address payable recipient, uint256 value) public onlyOwnerOrAdmin{
-    require(checkValidMultiSignatures(), "other admins need to sign");
+    require(checkValidMultiSignatures(), "multisig is mandatory");
 
     recipient.send(value);
 
@@ -275,12 +277,13 @@ contract SmartContract is AdminRole{
   }
   // if somebody accidentally sends tokens to this SC directly you may use
   // burnTokensTransferredDirectly(params: tokenholder ETH address, amount in
-  // uint256) method with mandatory multisignatures
+  // uint256)
+  // requires multisig 2/3
   function burnTokensTransferredDirectly(address payable participant, uint256 value) public onlyOwnerOrAdmin{
     uint256 i = getCurrentPhaseIndex();
     require(i == 1, "Not Allowed phase"); // First phase
 
-    require(checkValidMultiSignatures(), "other admins need to sign");
+    require(checkValidMultiSignatures(), "multisig is mandatory");
 
     uint256 topay_value = (value * _token_exchange_rate).div(10**token.decimals());
     require(address(this).balance >= topay_value, "Insufficient funds");
@@ -300,11 +303,12 @@ contract SmartContract is AdminRole{
   // This is a final distribution after phase 2 is fihished, everyone who left the
   // request with register() method will get remaining ETH amount
   // in proportion to their burnt tokens
-  function final() public onlyOwnerOrAdmin{
+  // requires multisig 2/3
+  function finalDistribution() public onlyOwnerOrAdmin{
     uint256 i = getCurrentPhaseIndex();
     require(i == 3 && !phases[i].IS_FINISHED, "Not Allowed phase"); // Final Phase
 
-    require(checkValidMultiSignatures(), "Has not all needed signatures");
+    require(checkValidMultiSignatures(), "multisig is mandatory");
 
     uint256 total_balance = address(this).balance;
     uint256 sum_burnt_amount = getBurntAmountByRequests();
