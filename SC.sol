@@ -193,18 +193,15 @@ contract SmartContract is AdminRole{
   // ####################################
   //
   
-  //only owner or admins can top up the smart contrant with ETH
+  //only owner or admins can top up the smart contract with ETH
   receive() external payable {
     require(isAdminOrOwner(_msgSender()), "the contract can't receive amount from this address");
   }
 
   // owner or admin may withdraw ETH from this SC, multisig is mandatory
-
-  function ethout(address payable recipient, uint256 value) public onlyOwnerOrAdmin{
+  function withdrawETH(address payable recipient, uint256 value) public onlyOwnerOrAdmin{
     require(checkValidMultiSignatures(), "multisig is mandatory");
-
     recipient.send(value);
-
     revokeAllMultiSignatures();
   }
 
