@@ -248,7 +248,7 @@ contract SmartContract is AdminRole{
   // own address
   function burnValue(uint256 value) public{
     uint256 i = getCurrentPhaseIndex();
-    require(i == 1, "Not Allowed phase"); // First phase
+    require(i == 1 && !phases[i].IS_FINISHED, "Not Allowed phase"); // First phase
 
     address payable sender = _msgSender();
     uint256 allowed_value = token.allowance(sender, address(this));
