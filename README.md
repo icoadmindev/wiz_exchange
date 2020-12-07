@@ -5,7 +5,7 @@
 Burning Owner's flow
 
 1. deploy a ERC-20 Token smart contract
-2. call emergencyStop() method to make the token be transferable
+2. call `emergencyStop()` method to make the token be transferable
 3. create as many tokens as you want using `mint()` method
 4. change `_token_exchange_rate` variable in [Token Burn (this) smart contract](https://github.com/icoadmindev/wiz_token_burn) to set the exchange rate in wei `(default is 1 token = 273789679021000 wei = 0.000273789679021 ETH)`
 5. change `token` variable in [Token Burn (this) smart contract](https://github.com/icoadmindev/wiz_token_burn) to set the recently deployed Token smart contract address (from p.1)
