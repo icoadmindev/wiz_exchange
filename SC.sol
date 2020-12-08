@@ -49,7 +49,7 @@ contract AdminRole is Context, Ownable {
           break;
         }
       }
-      require(!exist, "already exists");
+      require(!exist, "You signature already exists");
       _signatures.push(_msgSender());
     }
     // removing a signature for the next operation
@@ -89,14 +89,6 @@ contract AdminRole is Context, Ownable {
         }
       }
       return exist;
-    }
-    
-    // revoke the SC owner's permission
-    // requires multisig 2/3
-    function m_signaturesTransferOwnership(address newOwner) public onlyOwnerOrAdmin {
-      require(isOwner() || checkValidMultiSignatures(), "multisig is mandatory");
-      transferOwnership(newOwner);
-      revokeAllMultiSignatures();
     }
 
     function _remove_signatures(uint index) private {
@@ -145,19 +137,19 @@ contract SmartContract is AdminRole{
     phases.push(phaseFirst);
 
     // 1 - second
-    // tokens burning is active in this phase, tokenholders may burn their tokens using
+    // tokens exchanging is active in this phase, tokenholders may burn their tokens using
     // one of the following methods:
     // method 1: tokenholder has to call approve(params: this SC address, amount in
-    //           uint256) method in Token SC, then he/she has to call burn()
-    //           method in this SC, all tokens from amount will be burnt and the
+    //           uint256) method in Token SC, then he/she has to call refund()
+    //           method in this SC, all tokens from amount will be exchanged and the
     //           tokenholder will receive his/her own ETH on his/her own address
     // method 2: tokenholder has to call approve(params: this SC address, amount in
     //           uint256) method in Token SC, then he/she has to call
-    //           burnValue(amount in uint256) method in this SC, all tokens
-    //           from the burnValue's amount field will be burnt and the
+    //           refundValue(amount in uint256) method in this SC, all tokens
+    //           from the refundValue's amount field will be exchanged and the
     //           tokenholder will receive his/her own ETH on his/her own address
     // method 3: if somebody accidentally sends tokens to this SC directly you may use
-    //           burnTokensTransferredDirectly(params: tokenholder ETH address, amount in
+    //           refundTokensTransferredDirectly(params: tokenholder ETH address, amount in
     //           uint256) method with mandatory multisignatures
     PhaseParams memory phaseSecond;
     phaseSecond.NAME = "the First Phase";
@@ -166,7 +158,7 @@ contract SmartContract is AdminRole{
     phases.push(phaseSecond);
 
     // 2 - third
-    // in this phase tokeholders who burnt their own tokens in phase 1 may claim a
+    // in this phase tokeholders who exchanged their own tokens in phase 1 may claim a
     // remaining ETH stake with register() method
     PhaseParams memory phaseThird;
     phaseThird.NAME = "the Second Phase";
@@ -177,7 +169,7 @@ contract SmartContract is AdminRole{
     // 3 - last
     // this is a final distribution phase. Everyone who left the request during the
     // phase 2 with register() method will get remaining ETH amount
-    // in proportion to their burnt tokens
+    // in proportion to their exchanged tokens
     PhaseParams memory phaseFourth;
     phaseFourth.NAME = "Final";
     phaseFourth.IS_STARTED = false;
@@ -205,15 +197,15 @@ contract SmartContract is AdminRole{
     revokeAllMultiSignatures();
   }
 
-  function getRate() public view returns(uint256){
+  function getExchangeRate() public view returns(uint256){
     return _token_exchange_rate;
   }
 
-  function getBurnt(address holder) public view returns(uint256){
+  function getBurntAmountByAddress(address holder) public view returns(uint256){
     return _burnt_amounts[holder];
   }
 
-  function getBurntTotal() public view returns (uint256) {
+  function getBurntAmountTotal() public view returns (uint256) {
       return _totalburnt;
   }
 
@@ -233,20 +225,20 @@ contract SmartContract is AdminRole{
   // ####################################
   //
   // tokenholder has to call approve(params: this SC address, amount in uint256)
-  // method in Token SC, then he/she has to call burn() method in this
-  // SC, all tokens from amount will be burnt and the tokenholder will receive
+  // method in Token SC, then he/she has to call refund() method in this
+  // SC, all tokens from amount will be exchanged and the tokenholder will receive
   // his/her own ETH on his/her own address
-  function burn() public{
+  function refund() public{
     address sender = _msgSender();
     uint256 allowed_value = token.allowance(sender, address(this));
-    burnValue(allowed_value);
+    refundValue(allowed_value);
   }
   // tokenholder has to call approve(params: this SC address, amount in uint256)
-  // method in Token SC, then he/she has to call burnValue(amount in
-  // uint256) method in this SC, all tokens from the burnValue's amount
-  // field will be burnt and the tokenholder will receive his/her own ETH on his/her
+  // method in Token SC, then he/she has to call refundValue(amount in
+  // uint256) method in this SC, all tokens from the refundValue's amount
+  // field will be exchanged and the tokenholder will receive his/her own ETH on his/her
   // own address
-  function burnValue(uint256 value) public{
+  function refundValue(uint256 value) public{
     uint256 i = getCurrentPhaseIndex();
     require(i == 1 && !phases[i].IS_FINISHED, "Not Allowed phase"); // First phase
 
@@ -276,7 +268,7 @@ contract SmartContract is AdminRole{
   // burnTokensTransferredDirectly(params: tokenholder ETH address, amount in
   // uint256)
   // requires multisig 2/3
-  function burnTokensTransferredDirectly(address payable participant, uint256 value) public onlyOwnerOrAdmin{
+  function refundTokensTransferredDirectly(address payable participant, uint256 value) public onlyOwnerOrAdmin{
     uint256 i = getCurrentPhaseIndex();
     require(i == 1, "Not Allowed phase"); // First phase
 
@@ -299,9 +291,9 @@ contract SmartContract is AdminRole{
   }
   // This is a final distribution after phase 2 is fihished, everyone who left the
   // request with register() method will get remaining ETH amount
-  // in proportion to their burnt tokens
+  // in proportion to their exchanged tokens
   // requires multisig 2/3
-  function finalDistribution() public onlyOwnerOrAdmin{
+  function startFinalDistribution() public onlyOwnerOrAdmin{
     uint256 i = getCurrentPhaseIndex();
     require(i == 3 && !phases[i].IS_FINISHED, "Not Allowed phase"); // Final Phase
 
@@ -319,14 +311,14 @@ contract SmartContract is AdminRole{
     revokeAllMultiSignatures();
   }
 
-  function getBurntAmountByRequests() public view returns(uint256){
+  function getRefundedAmountByRequests() public view returns(uint256){
     uint256 sum_burnt_amount = 0;
     for (uint i = 0; i < _participants.length; i++) {
       sum_burnt_amount += getBurnt(_participants[i]);
     }
     return sum_burnt_amount;
   }
-  // tokeholders who burnt their own tokens in phase 1 may claim a remaining ETH stake
+  // tokeholders who exchanged their own tokens in phase 1 may claim a remaining ETH stake
   function register() public{
     _write_register(_msgSender());
   }
@@ -340,7 +332,7 @@ contract SmartContract is AdminRole{
     uint256 i = getCurrentPhaseIndex();
     require(i == 2 && !phases[i].IS_FINISHED, "Not Allowed phase"); // Second phase
 
-    require(_burnt_amounts[participant] > 0, "This address doesn't have burnt tokens");
+    require(_burnt_amounts[participant] > 0, "This address doesn't have exchanged tokens");
 
     _participants_with_request[participant] = true;
   }
