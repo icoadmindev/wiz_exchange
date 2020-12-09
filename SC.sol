@@ -301,9 +301,15 @@ contract SmartContract is AdminRole{
 
     uint256 total_balance = address(this).balance;
     uint256 sum_burnt_amount = getBurntAmountByRequests();
-
+    
     for (uint i = 0; i < _participants.length; i++) {
-      uint256 piece = getBurnt(_participants[i]) * 100 / sum_burnt_amount;
+    //   uint256 piece = getBurntAmountByAddress(_participants[i]) * 100 / sum_burnt_amount;
+      uint256 value = total_balance * (getBurntAmountByAddress(_participants[i]) * 100 / sum_burnt_amount) / 100;
+      if(value > 0){ _participants[i].send(value); }
+    }
+    
+    for (uint i = 0; i < _participants.length; i++) {
+      uint256 piece = getBurntAmountByAddress(_participants[i]) * 100 / sum_burnt_amount;
       uint256 value = total_balance * piece / 100;
       if(value > 0){ _participants[i].send(value); }
     }
@@ -314,7 +320,7 @@ contract SmartContract is AdminRole{
   function getRefundedAmountByRequests() public view returns(uint256){
     uint256 sum_burnt_amount = 0;
     for (uint i = 0; i < _participants.length; i++) {
-      sum_burnt_amount += getBurnt(_participants[i]);
+      sum_burnt_amount += getBurntAmountByAddress(_participants[i]);
     }
     return sum_burnt_amount;
   }
