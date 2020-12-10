@@ -233,7 +233,37 @@ contract SmartContract is AdminRole{
     uint256 allowed_value = token.allowance(sender, address(this));
     refundValue(allowed_value);
   }
-  
+  // tokenholder has to call approve(params: this SC address, amount in uint256)
+  // method in Token SC, then he/she has to call refundValue(amount in
+  // uint256) method in this SC, all tokens from the refundValue's amount
+  // field will be exchanged and the tokenholder will receive his/her own ETH on his/her
+  // own address
+  function refundValue(uint256 value) public{
+    uint256 i = getCurrentPhaseIndex();
+    require(i == 1 && !phases[i].IS_FINISHED, "Not Allowed phase"); // First phase
+
+    address payable sender = _msgSender();
+    uint256 allowed_value = token.allowance(sender, address(this));
+    bool is_allowed = allowed_value >= value;
+
+    require(is_allowed, "Not Allowed value");
+
+    uint256 topay_value = (value * _token_exchange_rate).div(10**18);
+    BurningRequiredValues(allowed_value, topay_value, address(this), address(this).balance);
+    require(address(this).balance >= topay_value, "Insufficient funds");
+
+    require(token.transferFrom(sender, address(0x0000000000000000000000000000000000000000), value), "Error with transferFrom");
+
+    if(_burnt_amounts[sender] == 0){
+      _participants.push(sender);
+    }
+
+    _burnt_amounts[sender] = _burnt_amounts[sender].add(value);
+    _totalburnt = _totalburnt.add(value);
+
+
+    sender.send(topay_value);
+  }
   // if somebody accidentally sends tokens to this SC directly you may use
   // burnTokensTransferredDirectly(params: tokenholder ETH address, amount in
   // uint256)
@@ -274,7 +304,7 @@ contract SmartContract is AdminRole{
     
     uint256 pointfix = 1000000000000000000; // 10^18
     for (uint i = 0; i < _participants.length; i++) {
-      uint256 piece = getBurnt(_participants[i]) * pointfix / sum_burnt_amount;
+      uint256 piece = getBurntAmountByAddress(_participants[i]) * pointfix / sum_burnt_amount;
       uint256 value = (total_balance * piece) / pointfix;
       if(value > 0){ _participants[i].send(value); }
     }
