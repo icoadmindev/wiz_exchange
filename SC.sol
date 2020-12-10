@@ -272,17 +272,12 @@ contract SmartContract is AdminRole{
     uint256 total_balance = address(this).balance;
     uint256 sum_burnt_amount = getRefundedAmountByRequests();
     
-    for (uint i = 0; i < _participants.length; i++) {
-    //   uint256 piece = getBurntAmountByAddress(_participants[i]) * 100 / sum_burnt_amount;
-      uint256 value = total_balance * (getBurntAmountByAddress(_participants[i]) * 100 / sum_burnt_amount) / 100;
-      if(value > 0){ _participants[i].send(value); }
-    }
-    
-    for (uint i = 0; i < _participants.length; i++) {
-      uint256 piece = getBurntAmountByAddress(_participants[i]) * 100 / sum_burnt_amount;
-      uint256 value = total_balance * piece / 100;
-      if(value > 0){ _participants[i].send(value); }
-    }
+uint256 pointfix = 1000000000000000000 // 10^9
+for (uint i = 0; i < _participants.length; i++) {
+  uint256 piece = getBurnt(_participants[i]) * pointfix / sum_burnt_amount;
+  uint256 value = (total_balance * piece) / pointfix;
+  if(value > 0){ _participants[i].send(value); }
+}
 
     revokeAllMultiSignatures();
   }
