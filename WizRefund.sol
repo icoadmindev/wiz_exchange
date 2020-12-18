@@ -476,6 +476,7 @@ contract WizRefund is AdminRole, TokenRecover {
     uint256 constant PHASES_COUNT = 4;
     uint256 private _token_exchange_rate = 273789679021000; //0.000273789679021 ETH per 1 token
     uint256 private _totalburnt = 0;
+    uint256 public final_distribution_balance;
 
     address payable[] private _participants;
 
@@ -589,7 +590,7 @@ contract WizRefund is AdminRole, TokenRecover {
         return _participants.length;
     }
 
-    function getRegistrationStatus(address participant) external view returns (bool){
+    function isRegistration(address participant) public view returns (bool){
         return _participants_with_request[participant];
     }
 
@@ -676,21 +677,19 @@ contract WizRefund is AdminRole, TokenRecover {
     function startFinalDistribution(uint256 _start_index, uint256 _end_index) external onlyOwnerOrAdmin nonReentrant {
         require(_end_index < _participants.length);
         uint256 j = getCurrentPhaseIndex();
+
         require(j == 3 && !phases[j].IS_FINISHED, "Not Allowed phase");
         // Final Phase
-
         require(checkValidMultiSignatures(), "multisig is mandatory");
 
-        uint256 total_balance = address(this).balance;
         uint256 sum_burnt_amount = getRefundedAmountByRequests(_start_index, _end_index);
-
         uint256 pointfix = 1000000000000000000;
         // 10^18
 
         for (uint i = _start_index; i <= _end_index; i++) {
             uint256 piece = getBurntAmountByAddress(_participants[i]).mul(pointfix).div(sum_burnt_amount);
-            uint256 value = total_balance.mul(piece).div(pointfix);
-            if (value > 0 && !isFinalWithdraw(_participants[i])) {
+            uint256 value = final_distribution_balance.mul(piece).div(pointfix);
+            if (value > 0 && isRegistration(_participants[i]) && !isFinalWithdraw(_participants[i])) {
                 _is_final_withdraw[_participants[i]] = true;
                 (bool success,) = _participants[i].call{value : value}("");
                 require(success, "Transfer failed");
@@ -741,6 +740,9 @@ contract WizRefund is AdminRole, TokenRecover {
         require((i + 1) < PHASES_COUNT);
         require(phases[i].IS_FINISHED);
         phases[i + 1].IS_STARTED = true;
+        if (phases[3].IS_STARTED && phases[2].IS_FINISHED) {
+            final_distribution_balance = address(this).balance;
+        }
     }
 
     function finishCurrentPhase() external onlyOwnerOrAdmin {
