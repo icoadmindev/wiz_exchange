@@ -561,15 +561,6 @@ contract WizRefund is AdminRole, TokenRecover {
         revokeAllMultiSignatures();
     }
 
-    function setExchangeRate(uint256 _new_value) onlyOwnerOrAdmin external returns (bool){
-        bool result;
-        if (_new_value > 0) {
-            _token_exchange_rate = _new_value;
-            result = true;
-        }
-        return result;
-    }
-
     function getExchangeRate() external view returns (uint256){
         return _token_exchange_rate;
     }
@@ -675,7 +666,7 @@ contract WizRefund is AdminRole, TokenRecover {
     // in proportion to their exchanged tokens
     // requires multisig 2/3
     function startFinalDistribution(uint256 _start_index, uint256 _end_index) external onlyOwnerOrAdmin nonReentrant {
-        require(_end_index < _participants.length);
+        require(_start_index <= _end_index && _end_index < _participants.length);
         uint256 j = getCurrentPhaseIndex();
 
         require(j == 3 && !phases[j].IS_FINISHED, "Not Allowed phase");
@@ -705,10 +696,10 @@ contract WizRefund is AdminRole, TokenRecover {
     }
 
     function getRefundedAmountByRequests(uint256 __start_index, uint256 __end_index) public view returns (uint256){
-        require(__end_index < _participants.length);
+        require(__start_index <= __end_index && __end_index < _participants.length);
         uint256 sum_burnt_amount = 0;
         for (uint i = __start_index; i <= __end_index; i++) {
-            if (!isFinalWithdraw(_participants[i])) {
+            if (isRegistration(_participants[i]) && !isFinalWithdraw(_participants[i])) {
                 sum_burnt_amount = sum_burnt_amount.add(getBurntAmountByAddress(_participants[i]));
             }
         }
