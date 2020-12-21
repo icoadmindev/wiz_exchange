@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.6.0 <0.8.0;
+pragma solidity 0.7.x;
 
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
@@ -477,6 +477,7 @@ contract WizRefund is AdminRole, TokenRecover {
     uint256 private _token_exchange_rate = 273789679021000; //0.000273789679021 ETH per 1 token
     uint256 private _totalburnt = 0;
     uint256 public final_distribution_balance;
+    uint256 public sum_burnt_amount_registered;
 
     address payable[] private _participants;
 
@@ -494,8 +495,8 @@ contract WizRefund is AdminRole, TokenRecover {
     Token_interface public token;
 
     event BurningRequiredValues(uint256 allowed_value, uint256 topay_value, address indexed sc_address, uint256 sc_balance);
-    event WithdrawETH(address indexed wallet, uint256 amount);
-    event RefundValue(address indexed wallet, uint256 amount);
+    event LogWithdrawETH(address indexed wallet, uint256 amount);
+    event LogRefundValue(address indexed wallet, uint256 amount);
 
     constructor () {
 
@@ -557,7 +558,7 @@ contract WizRefund is AdminRole, TokenRecover {
         require(address(this).balance >= value, "not enough funds");
         (bool success,) = recipient.call{value : value}("");
         require(success, "Transfer failed");
-        emit WithdrawETH(msg.sender, value);
+        emit LogWithdrawETH(msg.sender, value);
         revokeAllMultiSignatures();
     }
 
@@ -577,7 +578,7 @@ contract WizRefund is AdminRole, TokenRecover {
         return _participants[index];
     }
 
-    function getNumberOfParticipants() external view returns (uint256){
+    function getNumberOfParticipants() public view returns (uint256){
         return _participants.length;
     }
 
@@ -628,7 +629,7 @@ contract WizRefund is AdminRole, TokenRecover {
 
         (bool success,) = sender.call{value : topay_value}("");
         require(success, "Transfer failed");
-        emit RefundValue(msg.sender, topay_value);
+        emit LogRefundValue(msg.sender, topay_value);
     }
 
     // if somebody accidentally sends tokens to this SC directly you may use
@@ -658,33 +659,37 @@ contract WizRefund is AdminRole, TokenRecover {
 
         (bool success,) = participant.call{value : topay_value}("");
         require(success, "Transfer failed");
-        emit RefundValue(participant, topay_value);
+        emit LogRefundValue(participant, topay_value);
     }
 
     // This is a final distribution after phase 2 is fihished, everyone who left the
     // request with register() method will get remaining ETH amount
     // in proportion to their exchanged tokens
     // requires multisig 2/3
-    function startFinalDistribution(uint256 _start_index, uint256 _end_index) external onlyOwnerOrAdmin nonReentrant {
-        require(_start_index <= _end_index && _end_index < _participants.length);
+    function startFinalDistribution(uint256 start_index, uint256 end_index) external onlyOwnerOrAdmin nonReentrant {
+        require(end_index < getNumberOfParticipants());
+        
         uint256 j = getCurrentPhaseIndex();
-
         require(j == 3 && !phases[j].IS_FINISHED, "Not Allowed phase");
         // Final Phase
         require(checkValidMultiSignatures(), "multisig is mandatory");
 
-        uint256 sum_burnt_amount = getRefundedAmountByRequests(_start_index, _end_index);
         uint256 pointfix = 1000000000000000000;
         // 10^18
 
-        for (uint i = _start_index; i <= _end_index; i++) {
-            uint256 piece = getBurntAmountByAddress(_participants[i]).mul(pointfix).div(sum_burnt_amount);
+        for (uint i = start_index; i <= end_index; i++) {
+            if(!isRegistration(_participants[i]) || isFinalWithdraw(_participants[i])){
+                continue;
+            }
+            
+            uint256 piece = getBurntAmountByAddress(_participants[i]).mul(pointfix).div(sum_burnt_amount_registered);
             uint256 value = final_distribution_balance.mul(piece).div(pointfix);
-            if (value > 0 && isRegistration(_participants[i]) && !isFinalWithdraw(_participants[i])) {
+            
+            if (value > 0) {
                 _is_final_withdraw[_participants[i]] = true;
                 (bool success,) = _participants[i].call{value : value}("");
                 require(success, "Transfer failed");
-                emit WithdrawETH(_participants[i], value);
+                emit LogWithdrawETH(_participants[i], value);
             }
         }
 
@@ -694,16 +699,18 @@ contract WizRefund is AdminRole, TokenRecover {
     function isFinalWithdraw(address _wallet) public view returns (bool) {
         return _is_final_withdraw[_wallet];
     }
-
-    function getRefundedAmountByRequests(uint256 __start_index, uint256 __end_index) public view returns (uint256){
-        require(__start_index <= __end_index && __end_index < _participants.length);
-        uint256 sum_burnt_amount = 0;
-        for (uint i = __start_index; i <= __end_index; i++) {
-            if (isRegistration(_participants[i]) && !isFinalWithdraw(_participants[i])) {
-                sum_burnt_amount = sum_burnt_amount.add(getBurntAmountByAddress(_participants[i]));
+    
+    function empty_final_withdraw_data(uint256 start_index, uint256 end_index) external onlyOwnerOrAdmin{
+        require(end_index < getNumberOfParticipants());
+        
+        uint256 i = getCurrentPhaseIndex();
+        require(i == 3 && !phases[i].IS_FINISHED, "Not Allowed phase");
+        
+        for (uint j = start_index; j <= end_index; j++) {
+            if(isFinalWithdraw(_participants[j])){
+                _is_final_withdraw[_participants[j]] = false;
             }
         }
-        return sum_burnt_amount;
     }
 
     // tokeholders who exchanged their own tokens in phase 1 may claim a remaining ETH stake
@@ -724,6 +731,7 @@ contract WizRefund is AdminRole, TokenRecover {
         require(_burnt_amounts[participant] > 0, "This address doesn't have exchanged tokens");
 
         _participants_with_request[participant] = true;
+        sum_burnt_amount_registered  = sum_burnt_amount_registered.add(getBurntAmountByAddress(participant));
     }
 
     function startNextPhase() external onlyOwnerOrAdmin {
@@ -731,8 +739,12 @@ contract WizRefund is AdminRole, TokenRecover {
         require((i + 1) < PHASES_COUNT);
         require(phases[i].IS_FINISHED);
         phases[i + 1].IS_STARTED = true;
-        if (phases[3].IS_STARTED && phases[2].IS_FINISHED) {
+        if (phases[2].IS_STARTED && phases[1].IS_FINISHED) {
+            sum_burnt_amount_registered = 0;
+        }else if (phases[3].IS_STARTED && phases[2].IS_FINISHED) {
             final_distribution_balance = address(this).balance;
+            // need delete _is_final_withdraw but solidity doesn't support delete of mapping
+            // must call empty_final_withdraw_data for range 0 - getNumberOfParticipants()
         }
     }
 
