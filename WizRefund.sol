@@ -739,7 +739,7 @@ contract WizRefund is AdminRole, TokenRecover {
         require((i + 1) < PHASES_COUNT);
         require(phases[i].IS_FINISHED);
         phases[i + 1].IS_STARTED = true;
-        if (phases[2].IS_STARTED && phases[1].IS_FINISHED) {
+        if (phases[2].IS_STARTED && !phases[2].IS_FINISHED && phases[1].IS_FINISHED) {
             sum_burnt_amount_registered = 0;
         }else if (phases[3].IS_STARTED && phases[2].IS_FINISHED) {
             final_distribution_balance = address(this).balance;
