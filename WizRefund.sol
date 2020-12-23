@@ -259,99 +259,6 @@ contract Ownable is Context {
     }
 }
 
-/**
- * @title Roles
- * @dev Library for managing addresses assigned to a Role.
- */
-library Roles {
-    struct Role {
-        mapping(address => bool) bearer;
-    }
-
-    /**
-     * @dev Give an account access to this role.
-     */
-    function add(Role storage role, address account) internal {
-        require(!has(role, account), "Roles: account already has role");
-        role.bearer[account] = true;
-    }
-
-    /**
-     * @dev Remove an account's access to this role.
-     */
-    function remove(Role storage role, address account) internal {
-        require(has(role, account), "Roles: account does not have role");
-        role.bearer[account] = false;
-    }
-
-    /**
-     * @dev Check if an account has this role.
-     * @return bool
-     */
-    function has(Role storage role, address account) internal view returns (bool) {
-        require(account != address(0), "Roles: account is the zero address");
-        return role.bearer[account];
-    }
-}
-
-/**
- * @dev Contract module that helps prevent reentrant calls to a function.
- *
- * Inheriting from `ReentrancyGuard` will make the {nonReentrant} modifier
- * available, which can be applied to functions to make sure there are no nested
- * (reentrant) calls to them.
- *
- * Note that because there is a single `nonReentrant` guard, functions marked as
- * `nonReentrant` may not call one another. This can be worked around by making
- * those functions `private`, and then adding `external` `nonReentrant` entry
- * points to them.
- *
- * TIP: If you would like to learn more about reentrancy and alternative ways
- * to protect against it, check out our blog post
- * https://blog.openzeppelin.com/reentrancy-after-istanbul/[Reentrancy After Istanbul].
- */
-abstract contract ReentrancyGuard {
-    // Booleans are more expensive than uint256 or any type that takes up a full
-    // word because each write operation emits an extra SLOAD to first read the
-    // slot's contents, replace the bits taken up by the boolean, and then write
-    // back. This is the compiler's defense against contract upgrades and
-    // pointer aliasing, and it cannot be disabled.
-
-    // The values being non-zero value makes deployment a bit more expensive,
-    // but in exchange the refund on every call to nonReentrant will be lower in
-    // amount. Since refunds are capped to a percentage of the total
-    // transaction's gas, it is best to keep them low in cases like this one, to
-    // increase the likelihood of the full refund coming into effect.
-    uint256 private constant _NOT_ENTERED = 1;
-    uint256 private constant _ENTERED = 2;
-
-    uint256 private _status;
-
-    constructor () {
-        _status = _NOT_ENTERED;
-    }
-
-    /**
-     * @dev Prevents a contract from calling itself, directly or indirectly.
-     * Calling a `nonReentrant` function from another `nonReentrant`
-     * function is not supported. It is possible to prevent this from happening
-     * by making the `nonReentrant` function external, and make it call a
-     * `private` function that does the actual work.
-     */
-    modifier nonReentrant() {
-        // On the first call to nonReentrant, _notEntered will be true
-        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
-
-        // Any calls to nonReentrant after this point will fail
-        _status = _ENTERED;
-
-        _;
-
-        // By storing the original value once again, a refund is triggered (see
-        // https://eips.ethereum.org/EIPS/eip-2200)
-        _status = _NOT_ENTERED;
-    }
-}
 
 abstract contract Token_interface {
     function owner() public view virtual returns (address);
@@ -367,111 +274,242 @@ abstract contract Token_interface {
     function transferFrom(address _from, address _to, uint _value) public virtual returns (bool);
 }
 
-/**
- * @title TokenRecover
- * @author Vittorio Minacori (https://github.com/vittominacori)
- * @dev Allow to recover any ERC20 sent into the contract for error
- */
-contract TokenRecover is Ownable {
+contract MultiSigPermission is Context {
 
-    /**
-     * @dev Remember that only owner can call so be careful when use on contracts generated from other contracts.
-     * @param tokenAddress The token contract address
-     * @param tokenAmount Number of tokens to be sent
-     */
-    function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyOwner {
-        Token_interface(tokenAddress).transfer(owner(), tokenAmount);
+    uint constant public MAX_OWNER_COUNT = 3;
+
+    event Confirmation(address indexed sender, uint indexed transactionId);
+    event Revocation(address indexed sender, uint indexed transactionId);
+    event Submission(uint indexed transactionId);
+    event Execution(uint indexed transactionId);
+    event ExecutionFailure(uint indexed transactionId);
+    event Deposit(address indexed sender, uint value);
+    event SignRoleAddition(address indexed signRoleAddress);
+    event SignRoleRemoval(address indexed signRoleAddress);
+    event RequirementChange(uint required);
+
+    mapping (uint => Transaction) public transactions;
+    mapping (uint => mapping (address => bool)) public confirmations;
+    mapping (address => bool) public isSignRole;
+    address[] public signRoleAddresses;
+    uint public required;
+    uint public transactionCount;
+
+    struct Transaction {
+        address destination;
+        uint value;
+        bytes data;
+        bool executed;
     }
+
+    modifier signRoleAddresseExists(address signRoleAddress) {
+        require(isSignRole[signRoleAddress], "Role doesn't exists");
+        _;
+    }
+
+    modifier transactionExists(uint transactionId) {
+        require(transactions[transactionId].destination != address(0), "Transaction doesn't exists");
+        _;
+    }
+
+    modifier confirmed(uint transactionId, address signRoleAddress) {
+        require(confirmations[transactionId][signRoleAddress], "Transaction didn't confirm");
+        _;
+    }
+
+    modifier notConfirmed(uint transactionId, address signRoleAddress) {
+        require(!confirmations[transactionId][signRoleAddress], "Transaction already confirmed");
+        _;
+    }
+
+    modifier notExecuted(uint transactionId) {
+        require(!transactions[transactionId].executed, "Transaction already executed");
+        _;
+    }
+
+    modifier notNull(address _address) {
+        require(_address != address(0), "address is 0");
+        _;
+    }
+
+    modifier validRequirement(uint signRoleAddresseCount, uint _required) {
+        require(signRoleAddresseCount <= MAX_OWNER_COUNT
+            && _required <= signRoleAddresseCount
+            && _required != 0
+            && signRoleAddresseCount != 0, "Not valid required count");
+        _;
+    }
+
+    constructor(uint _required)
+    {
+        required = _required;
+    }
+
+    /// @dev Returns the confirmation status of a transaction.
+    /// @param transactionId Transaction ID.
+    /// @return Confirmation status.
+    function isConfirmed(uint transactionId)
+        public
+        view returns (bool)
+    {
+        uint count = 0;
+        for (uint i=0; i<signRoleAddresses.length; i++) {
+            if (confirmations[transactionId][signRoleAddresses[i]])
+                count += 1;
+            if (count == required)
+                return true;
+        }
+        return false;
+    }
+
+    function checkSignRoleExists(address signRoleAddress)
+        public
+        view returns (bool)
+    {
+        return isSignRole[signRoleAddress];
+    }
+
+
+
+    /// @dev Allows an signRoleAddress to confirm a transaction.
+    /// @param transactionId Transaction ID.
+    function confirmTransaction(uint transactionId)
+        public
+        signRoleAddresseExists(_msgSender())
+        transactionExists(transactionId)
+        notConfirmed(transactionId, _msgSender())
+    {
+        confirmations[transactionId][_msgSender()] = true;
+        Confirmation(_msgSender(), transactionId);
+        executeTransaction(transactionId);
+    }
+
+    /// @dev Allows anyone to execute a confirmed transaction.
+    /// @param transactionId Transaction ID.
+    function executeTransaction(uint transactionId)
+        public
+        signRoleAddresseExists(_msgSender())
+        notExecuted(transactionId)
+    {
+        if (isConfirmed(transactionId)) {
+            transactions[transactionId].executed = true;
+            (bool success,) = transactions[transactionId].destination.call{value : transactions[transactionId].value}(transactions[transactionId].data);
+            if (success)
+                Execution(transactionId);
+            else {
+                ExecutionFailure(transactionId);
+                transactions[transactionId].executed = false;
+            }
+        }
+    }
+
+
+    /*
+     * Internal functions
+     */
+    function addTransaction(address destination, uint value, bytes memory data)
+        internal
+        notNull(destination)
+        returns (uint transactionId)
+    {
+        transactionId = transactionCount;
+        transactions[transactionId] = Transaction({
+            destination: destination,
+            value: value,
+            data: data,
+            executed: false
+        });
+        transactionCount += 1;
+        Submission(transactionId);
+    }
+
+    function submitTransaction(address destination, uint value, bytes memory data)
+        internal
+        returns (uint transactionId)
+    {
+        transactionId = addTransaction(destination, value, data);
+        confirmTransaction(transactionId);
+    }
+
+    function addSignRole(address signRoleAddress)
+        internal
+    {
+        require(signRoleAddress != address(0));
+        require(signRoleAddresses.length + 1 >= required);
+        require(!checkSignRoleExists(signRoleAddress));
+
+        isSignRole[signRoleAddress] = true;
+        signRoleAddresses.push(signRoleAddress);
+        SignRoleAddition(signRoleAddress);
+    }
+
 }
 
-contract AdminRole is Context, Ownable, ReentrancyGuard {
-    using Roles for Roles.Role;
-    using SafeMath for uint256;
 
-    Roles.Role private _admins;
-    address[] private _signatures;
+contract AdminRole is Context, MultiSigPermission {
 
-    constructor () {
-        _admins.add(address(0x8186a47C412f8112643381EAa3272a66973E32f2));
-        _admins.add(address(0xEe3EA17E0Ed56a794e9bAE6F7A6c6b43b93333F5));
-    }
-
-    modifier onlyAdmin() {
-        require(isAdmin(_msgSender()), "AdminRole: you don't have permission to perform that action");
-        _;
+    uint constant public REQUIRED_CONFIRMATIONS_COUNT = 2;
+    
+    constructor () MultiSigPermission(REQUIRED_CONFIRMATIONS_COUNT) {
+        addSignRole(_msgSender());
+        addSignRole(address(0x8186a47C412f8112643381EAa3272a66973E32f2));
+        addSignRole(address(0xEe3EA17E0Ed56a794e9bAE6F7A6c6b43b93333F5));
     }
 
     modifier onlyOwnerOrAdmin() {
-        require(isAdminOrOwner(_msgSender()), "you don't have permission to perform that action");
+        require(checkSignRoleExists(_msgSender()), "you don't have permission to perform that action");
         _;
     }
+}
 
-    function isAdminOrOwner(address account) public view returns (bool) {
-        return isAdmin(account) || isOwner();
+library TxDataBuilder {
+    bytes constant public RTTD_FUNCHASH = '0x0829d713'; // WizRefund - refundTokensTransferredDirectly
+    bytes constant public SFD_FUNCHASH =  '0x78d10b09'; // WizRefund - startFinalDistribution
+    bytes constant public EFWD_FUNCHASH = '0x3d424559'; // WizRefund - empty_final_withdraw_data
+    bytes constant public FR_FUNCHASH =   '0x492b2b37'; // WizRefund - forceRegister
+    bytes constant public RP_FUNCHASH =   '0x422a042e'; // WizRefund - revertPhase
+    bytes constant public WETH_FUNCHASH =   '0x4782f779'; // WizRefund - withdrawETH
+
+    function uint2bytes(uint256 x)
+        public
+        view returns (bytes memory b) {
+            b = new bytes(32);
+            assembly { mstore(add(b, 32), x) }
     }
 
-    function isAdmin(address account) public view returns (bool) {
-        return _admins.has(account);
-    }
+    function concatb(bytes memory self, bytes memory other)
+        public
+        view returns (bytes memory) {
+             bytes memory ret = new bytes(self.length + other.length);
+             // var (src, srcLen) = Memory.fromBytes(self);
+             // var (src2, src2Len) = Memory.fromBytes(other);
+             // var (dest,) = Memory.fromBytes(ret);
+             // var dest2 = dest + src2Len;
+             // Memory.copy(src, dest, srcLen);
+             // Memory.copy(src2, dest2, src2Len);
+             ret = abi.encodePacked(self, other);
+             return ret;
+        }
 
-    //adding a signature for the next operation
-    function addSignature4NextOperation() public onlyOwnerOrAdmin {
-        bool exist = false;
-        for (uint256 i = 0; i < _signatures.length; i++) {
-            if (_signatures[i] == _msgSender()) {
-                exist = true;
-                break;
+    function buildData(bytes memory function_hash, uint256[] memory argv)
+        public
+        view returns (bytes memory){
+            bytes memory data = function_hash;
+            for(uint i=0;i<argv.length;i++){
+                data = concatb(data, uint2bytes(argv[i]));
             }
-        }
-        require(!exist, "You signature already exists");
-        _signatures.push(_msgSender());
+            return data;
     }
-
-    // removing a signature for the next operation
-    function cancelSignature4NextOperation() public onlyOwnerOrAdmin {
-        for (uint256 i = 0; i < _signatures.length; i++) {
-            if (_signatures[i] == _msgSender()) {
-                _remove_signatures(i);
-                return;
-            }
-        }
-        require(false, "not found");
-
-    }
-
-    function checkValidMultiSignatures() public view returns (bool){
-        return _signatures.length >= 2;
-        //all_signatures = 3 (1 for owner + 2 for admin)
-    }
-
-    function revokeAllMultiSignatures() public onlyOwnerOrAdmin {
-        delete _signatures;
-    }
-
-    function checkExistSignature(address account) public view returns (bool){
-        bool exist = false;
-        for (uint256 i = 0; i < _signatures.length; i++) {
-            if (_signatures[i] == account) {
-                exist = true;
-                break;
-            }
-        }
-        return exist;
-    }
-
-    function _remove_signatures(uint index) private {
-        if (index >= _signatures.length) return;
-        for (uint i = index; i < _signatures.length - 1; i++) {
-            _signatures[i] = _signatures[i + 1];
-        }
-        _signatures.pop();
-    }
-
 }
 
 
-contract WizRefund is AdminRole, TokenRecover {
+contract WizRefund is Context, Ownable, AdminRole {
     using SafeMath for uint256;
+
+    modifier selfCall() {
+        require(_msgSender() == address(this), "You cannot call this method");
+        _;
+    }
 
     uint256 constant PHASES_COUNT = 4;
     uint256 private _token_exchange_rate = 273789679021000; //0.000273789679021 ETH per 1 token
@@ -549,17 +587,15 @@ contract WizRefund is AdminRole, TokenRecover {
 
     //only owner or admins can top up the smart contract with ETH
     receive() external payable {
-        require(isAdminOrOwner(_msgSender()), "the contract can't receive amount from this address");
+        require(checkSignRoleExists(_msgSender()), "the contract can't receive amount from this address");
     }
 
     // owner or admin may withdraw ETH from this SC, multisig is mandatory
-    function withdrawETH(address payable recipient, uint256 value) external onlyOwnerOrAdmin nonReentrant {
-        require(checkValidMultiSignatures(), "multisig is mandatory");
+    function withdrawETH(address payable recipient, uint256 value) external selfCall {
         require(address(this).balance >= value, "not enough funds");
         (bool success,) = recipient.call{value : value}("");
         require(success, "Transfer failed");
         emit LogWithdrawETH(msg.sender, value);
-        revokeAllMultiSignatures();
     }
 
     function getExchangeRate() external view returns (uint256){
@@ -594,28 +630,17 @@ contract WizRefund is AdminRole, TokenRecover {
     // SC, all tokens from amount will be exchanged and the tokenholder will receive
     // his/her own ETH on his/her own address
     function refund() external {
-        address sender = _msgSender();
-        uint256 allowed_value = token.allowance(sender, address(this));
-        refundValue(allowed_value);
-    }
-    // tokenholder has to call approve(params: this SC address, amount in uint256)
-    // method in Token SC, then he/she has to call refundValue(amount in
-    // uint256) method in this SC, all tokens from the refundValue's amount
-    // field will be exchanged and the tokenholder will receive his/her own ETH on his/her
-    // own address
-    function refundValue(uint256 value) public nonReentrant {
+        // First phase
         uint256 i = getCurrentPhaseIndex();
         require(i == 1 && !phases[i].IS_FINISHED, "Not Allowed phase");
-        // First phase
 
         address payable sender = _msgSender();
-        uint256 allowed_value = token.allowance(sender, address(this));
-        bool is_allowed = allowed_value >= value;
+        uint256 value = token.allowance(sender, address(this));
 
-        require(is_allowed, "Not Allowed value");
+        require(value > 0, "Not Allowed value");
 
         uint256 topay_value = value.mul(_token_exchange_rate).div(10 ** 18);
-        BurningRequiredValues(allowed_value, topay_value, address(this), address(this).balance);
+        BurningRequiredValues(value, topay_value, address(this), address(this).balance);
         require(address(this).balance >= topay_value, "Insufficient funds");
 
         require(token.transferFrom(sender, address(0), value), "Error with transferFrom");
@@ -636,12 +661,10 @@ contract WizRefund is AdminRole, TokenRecover {
     // burnTokensTransferredDirectly(params: tokenholder ETH address, amount in
     // uint256)
     // requires multisig 2/3
-    function refundTokensTransferredDirectly(address payable participant, uint256 value) external onlyOwnerOrAdmin nonReentrant {
+    function refundTokensTransferredDirectly(address payable participant, uint256 value) external selfCall {
         uint256 i = getCurrentPhaseIndex();
         require(i == 1, "Not Allowed phase");
         // First phase
-
-        require(checkValidMultiSignatures(), "multisig is mandatory");
 
         uint256 topay_value = value.mul(_token_exchange_rate).div(10 ** uint256(token.decimals()));
         require(address(this).balance >= topay_value, "Insufficient funds");
@@ -655,8 +678,6 @@ contract WizRefund is AdminRole, TokenRecover {
         _burnt_amounts[participant] = _burnt_amounts[participant].add(value);
         _totalburnt = _totalburnt.add(value);
 
-        revokeAllMultiSignatures();
-
         (bool success,) = participant.call{value : topay_value}("");
         require(success, "Transfer failed");
         emit LogRefundValue(participant, topay_value);
@@ -666,13 +687,12 @@ contract WizRefund is AdminRole, TokenRecover {
     // request with register() method will get remaining ETH amount
     // in proportion to their exchanged tokens
     // requires multisig 2/3
-    function startFinalDistribution(uint256 start_index, uint256 end_index) external onlyOwnerOrAdmin nonReentrant {
+    function startFinalDistribution(uint256 start_index, uint256 end_index) external selfCall {
         require(end_index < getNumberOfParticipants());
         
         uint256 j = getCurrentPhaseIndex();
         require(j == 3 && !phases[j].IS_FINISHED, "Not Allowed phase");
         // Final Phase
-        require(checkValidMultiSignatures(), "multisig is mandatory");
 
         uint256 pointfix = 1000000000000000000;
         // 10^18
@@ -693,14 +713,13 @@ contract WizRefund is AdminRole, TokenRecover {
             }
         }
 
-        revokeAllMultiSignatures();
     }
 
     function isFinalWithdraw(address _wallet) public view returns (bool) {
         return _is_final_withdraw[_wallet];
     }
     
-    function empty_final_withdraw_data(uint256 start_index, uint256 end_index) external onlyOwnerOrAdmin{
+    function empty_final_withdraw_data(uint256 start_index, uint256 end_index) external selfCall{
         require(end_index < getNumberOfParticipants());
         
         uint256 i = getCurrentPhaseIndex();
@@ -719,7 +738,7 @@ contract WizRefund is AdminRole, TokenRecover {
     }
 
     // admin can claim register() method instead of tokenholder
-    function forceRegister(address payable participant) external onlyOwnerOrAdmin {
+    function forceRegister(address payable participant) external selfCall {
         _write_register(participant);
     }
 
@@ -754,7 +773,7 @@ contract WizRefund is AdminRole, TokenRecover {
     }
 
     // this method reverts the current phase to the previous one
-    function revertPhase() external onlyOwnerOrAdmin {
+    function revertPhase() external selfCall {
         uint256 i = getCurrentPhaseIndex();
 
         require(i > 0, "Initialize phase is active already");
@@ -781,4 +800,75 @@ contract WizRefund is AdminRole, TokenRecover {
         }
         return current_phase;
     }
+    
+    function _base_submitTx(bytes memory data)
+      private 
+      returns (uint256 transactionId){
+        uint256 value = 0;
+        transactionId = submitTransaction(address(this), value, data);
+      }
+    
+    function submitTx_withdrawETH(address payable recipient, uint256 value)
+      external
+      onlyOwnerOrAdmin
+      returns (uint256 transactionId){
+        uint256[] memory f_args = new uint256[](2);
+        f_args[0] = uint256(recipient);
+        f_args[1] = value;
+        bytes memory data = TxDataBuilder.buildData(TxDataBuilder.WETH_FUNCHASH, f_args);
+        transactionId = _base_submitTx(data);
+      }
+    
+    function submitTx_revertPhase()
+      external
+      onlyOwnerOrAdmin
+      returns (uint256 transactionId){
+        uint256[] memory f_args = new uint256[](0);
+        bytes memory data = TxDataBuilder.buildData(TxDataBuilder.RP_FUNCHASH, f_args);
+        transactionId = _base_submitTx(data);
+      }
+    
+    function submitTx_forceRegister(address payable participant)
+      external
+      onlyOwnerOrAdmin
+      returns (uint256 transactionId){
+        uint256[] memory f_args = new uint256[](1);
+        f_args[0] = uint256(participant);
+        bytes memory data = TxDataBuilder.buildData(TxDataBuilder.FR_FUNCHASH, f_args);
+        transactionId = _base_submitTx(data);
+      }
+    
+    function submitTx_empty_final_withdraw_data(uint256 start_index, uint256 end_index)
+      external
+      onlyOwnerOrAdmin
+      returns (uint256 transactionId){
+        uint256[] memory f_args = new uint256[](2);
+        f_args[0] = start_index;
+        f_args[1] = end_index;
+        bytes memory data = TxDataBuilder.buildData(TxDataBuilder.EFWD_FUNCHASH, f_args);
+        transactionId = _base_submitTx(data);
+      }
+    
+    function submitTx_startFinalDistribution(uint256 start_index, uint256 end_index)
+      external
+      onlyOwnerOrAdmin
+      returns (uint256 transactionId){
+        uint256[] memory f_args = new uint256[](2);
+        f_args[0] = start_index;
+        f_args[1] = end_index;
+        bytes memory data = TxDataBuilder.buildData(TxDataBuilder.SFD_FUNCHASH, f_args);
+        transactionId = _base_submitTx(data);
+      }
+    
+    function submitTx_refundTokensTransferredDirectly(address payable participant, uint256 value)
+      external
+      onlyOwnerOrAdmin
+      returns (uint256 transactionId){
+        uint256[] memory f_args = new uint256[](2);
+        f_args[0] = uint256(participant);
+        f_args[1] = value;
+        bytes memory data = TxDataBuilder.buildData(TxDataBuilder.RTTD_FUNCHASH, f_args);
+        transactionId = _base_submitTx(data);
+      }
+
 }
