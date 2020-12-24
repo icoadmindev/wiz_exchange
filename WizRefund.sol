@@ -465,7 +465,7 @@ contract AdminRole is Context, MultiSigPermission {
 
 library TxDataBuilder {
     string constant public RTTD_FUNCHASH = '0829d713'; // WizRefund - refundTokensTransferredDirectly
-    string constant public EFWD_FUNCHASH = '3d424559'; // WizRefund - clearFinalWithdrawData
+    string constant public EFWD_FUNCHASH = 'eee48b02'; // WizRefund - clearFinalWithdrawData
     string constant public FR_FUNCHASH =   '492b2b37'; // WizRefund - forceRegister
     string constant public RP_FUNCHASH =   '422a042e'; // WizRefund - revertPhase
     string constant public WETH_FUNCHASH =   '4782f779'; // WizRefund - withdrawETH
