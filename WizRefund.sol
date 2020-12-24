@@ -434,9 +434,9 @@ contract MultiSigPermission is Context {
     function addSignRole(address signRoleAddress)
         internal
     {
-        require(signRoleAddress != address(0));
-        require(signRoleAddresses.length + 1 >= required);
-        require(!checkSignRoleExists(signRoleAddress));
+        require(signRoleAddress != address(0), "Address cannot be null");
+        require(signRoleAddresses.length + 1 <= MAX_OWNER_COUNT, "Address qty cannot be more then max admins value");
+        require(!checkSignRoleExists(signRoleAddress), "Address already exists");
 
         isSignRole[signRoleAddress] = true;
         signRoleAddresses.push(signRoleAddress);
