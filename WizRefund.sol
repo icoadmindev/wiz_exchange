@@ -452,11 +452,8 @@ contract AdminRole is Context, MultiSigPermission {
     
     constructor () MultiSigPermission(REQUIRED_CONFIRMATIONS_COUNT) {
         addSignRole(_msgSender());
-        // addSignRole(address(0x8186a47C412f8112643381EAa3272a66973E32f2));
-        // addSignRole(address(0xEe3EA17E0Ed56a794e9bAE6F7A6c6b43b93333F5));
-        
-        addSignRole(address(0xE50745dB8564B0E52C3a4Bdbf644bD759593F530));
-        addSignRole(address(0x9A3e5FFF99a9f1b53F6d1c20955A60C890161276));
+        addSignRole(address(0x8186a47C412f8112643381EAa3272a66973E32f2));
+        addSignRole(address(0xEe3EA17E0Ed56a794e9bAE6F7A6c6b43b93333F5));
     }
 
     modifier onlyOwnerOrAdmin() {
@@ -585,8 +582,7 @@ contract WizRefund is Context, Ownable, AdminRole {
 
     constructor () {
 
-        // token = Token_interface(address(0x2F9b6779c37DF5707249eEb3734BbfC94763fBE2));
-        token = Token_interface(address(0xE82e37D5f9E4F24b2d05fEd7e049c826aBf43AEf));
+        token = Token_interface(address(0x2F9b6779c37DF5707249eEb3734BbfC94763fBE2));
 
         // 0 - first
         PhaseParams memory phaseInitialize;
