@@ -22,7 +22,7 @@ Tokenholder's flow
 
 9. call `register()` method in Refund smart contract, only the Tokenholders who refunded their own tokens in phase 1 may claim a remaining ETH stake
 
-Burning Owner's flow
+Refunding Owner's flow
 
 10. call `finishCurrentPhase()` to finish the phase 2
 11. call `startNextPhase()` to start the phase 3
@@ -57,7 +57,7 @@ Tokenholder's flow
 
 14. call `register()` method in Refund smart contract, only the Tokenholders who refunded their own tokens in phase 1 may claim a remaining ETH stake
 
-Burning Owner's flow
+Refunding Owner's flow
 
 15. call `finishCurrentPhase()` to finish the phase 2
 16. call `startNextPhase()` to start the phase 3
