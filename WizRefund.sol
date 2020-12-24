@@ -452,8 +452,11 @@ contract AdminRole is Context, MultiSigPermission {
     
     constructor () MultiSigPermission(REQUIRED_CONFIRMATIONS_COUNT) {
         addSignRole(_msgSender());
-        addSignRole(address(0x8186a47C412f8112643381EAa3272a66973E32f2));
-        addSignRole(address(0xEe3EA17E0Ed56a794e9bAE6F7A6c6b43b93333F5));
+        // addSignRole(address(0x8186a47C412f8112643381EAa3272a66973E32f2));
+        // addSignRole(address(0xEe3EA17E0Ed56a794e9bAE6F7A6c6b43b93333F5));
+        
+        addSignRole(address(0xE50745dB8564B0E52C3a4Bdbf644bD759593F530));
+        addSignRole(address(0x9A3e5FFF99a9f1b53F6d1c20955A60C890161276));
     }
 
     modifier onlyOwnerOrAdmin() {
@@ -461,6 +464,56 @@ contract AdminRole is Context, MultiSigPermission {
         _;
     }
 }
+
+// library TxDataBuilder {
+//     string constant public RTTD_FUNCHASH = '0x0829d713'; // WizRefund - refundTokensTransferredDirectly
+//     string constant public SFD_FUNCHASH =  '0x78d10b09'; // WizRefund - startFinalDistribution
+//     string constant public EFWD_FUNCHASH = '0x3d424559'; // WizRefund - empty_final_withdraw_data
+//     string constant public FR_FUNCHASH =   '0x492b2b37'; // WizRefund - forceRegister
+//     string constant public RP_FUNCHASH =   '0x422a042e'; // WizRefund - revertPhase
+//     string constant public WETH_FUNCHASH =   '0x4782f779'; // WizRefund - withdrawETH
+
+//     function uint2bytes(uint256 x)
+//         public
+//         pure returns (bytes memory b) {
+//             b = new bytes(32);
+//             assembly { mstore(add(b, 32), x) }
+//     }
+    
+
+//     function concatb(string memory self, string memory other)
+//         public
+//         pure returns (string memory) {
+//              string memory ret = string(abi.encodePacked(self, other));
+//              return ret;
+//         }
+
+//     function buildData(string memory function_hash, uint256[] memory argv)
+//         public
+//         pure returns (string memory){
+//             string memory data = function_hash;
+//             for(uint i=0;i<argv.length;i++){
+//                 string memory d = string(uint2bytes(argv[i]));
+//                 data = concatb(data, d);
+//             }
+//             return data;
+//     }
+    
+//     function str2b32(string memory source)
+//         public
+//         pure returns (bytes32 result) {
+//         bytes memory tempEmptyStringTest = bytes(source);
+//         if (tempEmptyStringTest.length == 0) {
+//             return 0x0;
+//         }
+    
+//         assembly {
+//             result := mload(add(source, 32))
+//         }
+//     }
+// }
+
+
 
 library TxDataBuilder {
     bytes constant public RTTD_FUNCHASH = '0x0829d713'; // WizRefund - refundTokensTransferredDirectly
@@ -472,35 +525,29 @@ library TxDataBuilder {
 
     function uint2bytes(uint256 x)
         public
-        view returns (bytes memory b) {
+        pure returns (bytes memory b) {
             b = new bytes(32);
             assembly { mstore(add(b, 32), x) }
     }
+    
 
     function concatb(bytes memory self, bytes memory other)
         public
-        view returns (bytes memory) {
-             bytes memory ret = new bytes(self.length + other.length);
-             // var (src, srcLen) = Memory.fromBytes(self);
-             // var (src2, src2Len) = Memory.fromBytes(other);
-             // var (dest,) = Memory.fromBytes(ret);
-             // var dest2 = dest + src2Len;
-             // Memory.copy(src, dest, srcLen);
-             // Memory.copy(src2, dest2, src2Len);
-             ret = abi.encodePacked(self, other);
-             return ret;
+        pure returns (bytes memory) {
+             return bytes(abi.encodePacked(self, other));
         }
 
     function buildData(bytes memory function_hash, uint256[] memory argv)
         public
-        view returns (bytes memory){
-            bytes memory data = function_hash;
+        pure returns (bytes memory data){
+            data = concatb(data, function_hash);
             for(uint i=0;i<argv.length;i++){
-                data = concatb(data, uint2bytes(argv[i]));
+                bytes memory d = uint2bytes(argv[i]);
+                data = concatb(data, d);
             }
-            return data;
     }
 }
+
 
 
 contract WizRefund is Context, Ownable, AdminRole {
@@ -538,7 +585,8 @@ contract WizRefund is Context, Ownable, AdminRole {
 
     constructor () {
 
-        token = Token_interface(address(0x2F9b6779c37DF5707249eEb3734BbfC94763fBE2));
+        // token = Token_interface(address(0x2F9b6779c37DF5707249eEb3734BbfC94763fBE2));
+        token = Token_interface(address(0xE82e37D5f9E4F24b2d05fEd7e049c826aBf43AEf));
 
         // 0 - first
         PhaseParams memory phaseInitialize;
@@ -807,9 +855,9 @@ contract WizRefund is Context, Ownable, AdminRole {
         uint256 value = 0;
         transactionId = submitTransaction(address(this), value, data);
       }
-    
+      
     function submitTx_withdrawETH(address payable recipient, uint256 value)
-      external
+      public
       onlyOwnerOrAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](2);
