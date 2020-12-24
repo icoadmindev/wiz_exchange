@@ -387,7 +387,7 @@ contract MultiSigPermission is Context {
     /// @dev Allows anyone to execute a confirmed transaction.
     /// @param transactionId Transaction ID.
     function executeTransaction(uint transactionId)
-        public
+        private
         signRoleAddresseExists(_msgSender())
         notExecuted(transactionId)
     {
@@ -462,84 +462,67 @@ contract AdminRole is Context, MultiSigPermission {
     }
 }
 
-// library TxDataBuilder {
-//     string constant public RTTD_FUNCHASH = '0x0829d713'; // WizRefund - refundTokensTransferredDirectly
-//     string constant public SFD_FUNCHASH =  '0x78d10b09'; // WizRefund - startFinalDistribution
-//     string constant public EFWD_FUNCHASH = '0x3d424559'; // WizRefund - empty_final_withdraw_data
-//     string constant public FR_FUNCHASH =   '0x492b2b37'; // WizRefund - forceRegister
-//     string constant public RP_FUNCHASH =   '0x422a042e'; // WizRefund - revertPhase
-//     string constant public WETH_FUNCHASH =   '0x4782f779'; // WizRefund - withdrawETH
-
-//     function uint2bytes(uint256 x)
-//         public
-//         pure returns (bytes memory b) {
-//             b = new bytes(32);
-//             assembly { mstore(add(b, 32), x) }
-//     }
-    
-
-//     function concatb(string memory self, string memory other)
-//         public
-//         pure returns (string memory) {
-//              string memory ret = string(abi.encodePacked(self, other));
-//              return ret;
-//         }
-
-//     function buildData(string memory function_hash, uint256[] memory argv)
-//         public
-//         pure returns (string memory){
-//             string memory data = function_hash;
-//             for(uint i=0;i<argv.length;i++){
-//                 string memory d = string(uint2bytes(argv[i]));
-//                 data = concatb(data, d);
-//             }
-//             return data;
-//     }
-    
-//     function str2b32(string memory source)
-//         public
-//         pure returns (bytes32 result) {
-//         bytes memory tempEmptyStringTest = bytes(source);
-//         if (tempEmptyStringTest.length == 0) {
-//             return 0x0;
-//         }
-    
-//         assembly {
-//             result := mload(add(source, 32))
-//         }
-//     }
-// }
-
-
 
 library TxDataBuilder {
-    bytes constant public RTTD_FUNCHASH = '0x0829d713'; // WizRefund - refundTokensTransferredDirectly
-    bytes constant public SFD_FUNCHASH =  '0x78d10b09'; // WizRefund - startFinalDistribution
-    bytes constant public EFWD_FUNCHASH = '0x3d424559'; // WizRefund - empty_final_withdraw_data
-    bytes constant public FR_FUNCHASH =   '0x492b2b37'; // WizRefund - forceRegister
-    bytes constant public RP_FUNCHASH =   '0x422a042e'; // WizRefund - revertPhase
-    bytes constant public WETH_FUNCHASH =   '0x4782f779'; // WizRefund - withdrawETH
+    string constant public RTTD_FUNCHASH = '0829d713'; // WizRefund - refundTokensTransferredDirectly
+    string constant public EFWD_FUNCHASH = '3d424559'; // WizRefund - cleaFinalWithdrawData
+    string constant public FR_FUNCHASH =   '492b2b37'; // WizRefund - forceRegister
+    string constant public RP_FUNCHASH =   '422a042e'; // WizRefund - revertPhase
+    string constant public WETH_FUNCHASH =   '4782f779'; // WizRefund - withdrawETH
 
-    function uint2bytes(uint256 x)
+    function uint2bytes32(uint256 x)
         public
         pure returns (bytes memory b) {
             b = new bytes(32);
             assembly { mstore(add(b, 32), x) }
     }
     
-
+    function uint2bytes8(uint256 x)
+        public
+        pure returns (bytes memory b) {
+            b = new bytes(32);
+            assembly { mstore(add(b, 32), x) }
+    }
+    
     function concatb(bytes memory self, bytes memory other)
         public
         pure returns (bytes memory) {
              return bytes(abi.encodePacked(self, other));
         }
+        
+    // Convert an hexadecimal character to their value
+    function fromHexChar(uint8 c) public pure returns (uint8) {
+        if (bytes1(c) >= bytes1('0') && bytes1(c) <= bytes1('9')) {
+            return c - uint8(bytes1('0'));
+        }
+        if (bytes1(c) >= bytes1('a') && bytes1(c) <= bytes1('f')) {
+            return 10 + c - uint8(bytes1('a'));
+        }
+        if (bytes1(c) >= bytes1('A') && bytes1(c) <= bytes1('F')) {
+            return 10 + c - uint8(bytes1('A'));
+        }
+        require(false, "unknown variant");
+    }
+    
+    // Convert an hexadecimal string to raw bytes
+    function fromHex(string memory s) public pure returns (bytes memory) {
+        bytes memory ss = bytes(s);
+        require(ss.length%2 == 0); // length must be even
+        bytes memory r = new bytes(ss.length/2);
+        for (uint i=0; i<ss.length/2; ++i) {
+            r[i] = bytes1(fromHexChar(uint8(ss[2*i])) * 16 +
+                        fromHexChar(uint8(ss[2*i+1])));
+        }
+        return r;
+    }
 
-    function buildData(bytes memory function_hash, uint256[] memory argv)
+    function buildData(string memory function_hash, uint256[] memory argv)
         public
         pure returns (bytes memory data){
-            data = concatb(data, function_hash);
+            bytes memory f = fromHex(function_hash);
+            data = concatb(data, f);
             for(uint i=0;i<argv.length;i++){
-                bytes memory d = uint2bytes(argv[i]);
+                bytes memory d = uint2bytes32(argv[i]);
                 data = concatb(data, d);
             }
     }
@@ -549,7 +532,7 @@ library TxDataBuilder {
 
 contract WizRefund is Context, Ownable, AdminRole {
     using SafeMath for uint256;
-
+    
     modifier selfCall() {
         require(_msgSender() == address(this), "You cannot call this method");
         _;
@@ -592,17 +575,11 @@ contract WizRefund is Context, Ownable, AdminRole {
 
         // 1 - second
         // tokens exchanging is active in this phase, tokenholders may burn their tokens using
-        // one of the following methods:
-        // method 1: tokenholder has to call approve(params: this SC address, amount in
+        //           method approve(params: this SC address, amount in
         //           uint256) method in Token SC, then he/she has to call refund()
         //           method in this SC, all tokens from amount will be exchanged and the
         //           tokenholder will receive his/her own ETH on his/her own address
-        // method 2: tokenholder has to call approve(params: this SC address, amount in
-        //           uint256) method in Token SC, then he/she has to call
-        //           refundValue(amount in uint256) method in this SC, all tokens
-        //           from the refundValue's amount field will be exchanged and the
-        //           tokenholder will receive his/her own ETH on his/her own address
-        // method 3: if somebody accidentally sends tokens to this SC directly you may use
+        // if somebody accidentally sent tokens to this SC directly you may use
         //           refundTokensTransferredDirectly(params: tokenholder ETH address, amount in
         //           uint256) method with mandatory multisignatures
         PhaseParams memory phaseFirst;
@@ -623,6 +600,7 @@ contract WizRefund is Context, Ownable, AdminRole {
         PhaseParams memory phaseFinal;
         phaseFinal.NAME = "Final";
         phases.push(phaseFinal);
+        
     }
 
     //
@@ -631,12 +609,12 @@ contract WizRefund is Context, Ownable, AdminRole {
 
     //only owner or admins can top up the smart contract with ETH
     receive() external payable {
-        require(checkSignRoleExists(_msgSender()), "the contract can't receive amount from this address");
+        require(checkSignRoleExists(_msgSender()), "the contract can't obtain ETH from this address");
     }
 
     // owner or admin may withdraw ETH from this SC, multisig is mandatory
     function withdrawETH(address payable recipient, uint256 value) external selfCall {
-        require(address(this).balance >= value, "not enough funds");
+        require(address(this).balance >= value, "Insufficient funds");
         (bool success,) = recipient.call{value : value}("");
         require(success, "Transfer failed");
         emit LogWithdrawETH(msg.sender, value);
@@ -687,7 +665,7 @@ contract WizRefund is Context, Ownable, AdminRole {
         BurningRequiredValues(value, topay_value, address(this), address(this).balance);
         require(address(this).balance >= topay_value, "Insufficient funds");
 
-        require(token.transferFrom(sender, address(0), value), "Error with transferFrom");
+        require(token.transferFrom(sender, address(0), value), "Insufficient approve() value");
 
         if (_burnt_amounts[sender] == 0) {
             _participants.push(sender);
@@ -704,7 +682,6 @@ contract WizRefund is Context, Ownable, AdminRole {
     // if somebody accidentally sends tokens to this SC directly you may use
     // burnTokensTransferredDirectly(params: tokenholder ETH address, amount in
     // uint256)
-    // requires multisig 2/3
     function refundTokensTransferredDirectly(address payable participant, uint256 value) external selfCall {
         uint256 i = getCurrentPhaseIndex();
         require(i == 1, "Not Allowed phase");
@@ -730,8 +707,7 @@ contract WizRefund is Context, Ownable, AdminRole {
     // This is a final distribution after phase 2 is fihished, everyone who left the
     // request with register() method will get remaining ETH amount
     // in proportion to their exchanged tokens
-    // requires multisig 2/3
-    function startFinalDistribution(uint256 start_index, uint256 end_index) external selfCall {
+    function startFinalDistribution(uint256 start_index, uint256 end_index) external onlyOwnerOrAdmin {
         require(end_index < getNumberOfParticipants());
         
         uint256 j = getCurrentPhaseIndex();
@@ -763,7 +739,7 @@ contract WizRefund is Context, Ownable, AdminRole {
         return _is_final_withdraw[_wallet];
     }
     
-    function empty_final_withdraw_data(uint256 start_index, uint256 end_index) external selfCall{
+    function cleaFinalWithdrawData(uint256 start_index, uint256 end_index) external selfCall{
         require(end_index < getNumberOfParticipants());
         
         uint256 i = getCurrentPhaseIndex();
@@ -791,7 +767,7 @@ contract WizRefund is Context, Ownable, AdminRole {
         require(i == 2 && !phases[i].IS_FINISHED, "Not Allowed phase");
         // Second phase
 
-        require(_burnt_amounts[participant] > 0, "This address doesn't have exchanged tokens");
+        require(_burnt_amounts[participant] > 0, "This address has not refunded tokens");
 
         _participants_with_request[participant] = true;
         sum_burnt_amount_registered  = sum_burnt_amount_registered.add(getBurntAmountByAddress(participant));
@@ -806,8 +782,6 @@ contract WizRefund is Context, Ownable, AdminRole {
             sum_burnt_amount_registered = 0;
         }else if (phases[3].IS_STARTED && phases[2].IS_FINISHED) {
             final_distribution_balance = address(this).balance;
-            // need delete _is_final_withdraw but solidity doesn't support delete of mapping
-            // must call empty_final_withdraw_data for range 0 - getNumberOfParticipants()
         }
     }
 
@@ -820,7 +794,7 @@ contract WizRefund is Context, Ownable, AdminRole {
     function revertPhase() external selfCall {
         uint256 i = getCurrentPhaseIndex();
 
-        require(i > 0, "Initialize phase is active already");
+        require(i > 0, "Initialize phase is already active");
 
         phases[i].IS_STARTED = false;
         phases[i].IS_FINISHED = false;
@@ -882,7 +856,7 @@ contract WizRefund is Context, Ownable, AdminRole {
         transactionId = _base_submitTx(data);
       }
     
-    function submitTx_empty_final_withdraw_data(uint256 start_index, uint256 end_index)
+    function submitTx_cleaFinalWithdrawData(uint256 start_index, uint256 end_index)
       external
       onlyOwnerOrAdmin
       returns (uint256 transactionId){
@@ -892,17 +866,7 @@ contract WizRefund is Context, Ownable, AdminRole {
         bytes memory data = TxDataBuilder.buildData(TxDataBuilder.EFWD_FUNCHASH, f_args);
         transactionId = _base_submitTx(data);
       }
-    
-    function submitTx_startFinalDistribution(uint256 start_index, uint256 end_index)
-      external
-      onlyOwnerOrAdmin
-      returns (uint256 transactionId){
-        uint256[] memory f_args = new uint256[](2);
-        f_args[0] = start_index;
-        f_args[1] = end_index;
-        bytes memory data = TxDataBuilder.buildData(TxDataBuilder.SFD_FUNCHASH, f_args);
-        transactionId = _base_submitTx(data);
-      }
+      
     
     function submitTx_refundTokensTransferredDirectly(address payable participant, uint256 value)
       external
@@ -915,4 +879,4 @@ contract WizRefund is Context, Ownable, AdminRole {
         transactionId = _base_submitTx(data);
       }
 
-}
+}     
