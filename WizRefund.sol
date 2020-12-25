@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.7.x;
+pragma solidity 0.7.x;
 
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
@@ -184,6 +184,81 @@ contract Context {
     }
 }
 
+/**
+ * @dev Contract module which provides a basic access control mechanism, where
+ * there is an account (an owner) that can be granted exclusive access to
+ * specific functions.
+ *
+ * This module is used through inheritance. It will make available the modifier
+ * `onlyOwner`, which can be applied to your functions to restrict their use to
+ * the owner.
+ */
+contract Ownable is Context {
+    address private _owner;
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    /**
+     * @dev Initializes the contract setting the deployer as the initial owner.
+     */
+    constructor () {
+        address msgSender = _msgSender();
+        _owner = msgSender;
+        emit OwnershipTransferred(address(0), msgSender);
+    }
+
+    /**
+     * @dev Returns the address of the current owner.
+     */
+    function owner() public view returns (address) {
+        return _owner;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        require(isOwner(), "Ownable: caller is not the owner");
+        _;
+    }
+
+    /**
+     * @dev Returns true if the caller is the current owner.
+     */
+    function isOwner() public view returns (bool) {
+        return _msgSender() == _owner;
+    }
+
+    /**
+     * @dev Leaves the contract without owner. It will not be possible to call
+     * `onlyOwner` functions anymore. Can only be called by the current owner.
+     *
+     * NOTE: Renouncing ownership will leave the contract without an owner,
+     * thereby removing any functionality that is only available to the owner.
+     */
+    function renounceOwnership() public onlyOwner {
+        emit OwnershipTransferred(_owner, address(0));
+        _owner = address(0);
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Can only be called by the current owner.
+     */
+    function transferOwnership(address newOwner) public onlyOwner {
+        _transferOwnership(newOwner);
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     */
+    function _transferOwnership(address newOwner) internal {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }
+}
+
 
 abstract contract Token_interface {
     function owner() public view virtual returns (address);
@@ -305,7 +380,7 @@ contract MultiSigPermission is Context {
         notConfirmed(transactionId, _msgSender())
     {
         confirmations[transactionId][_msgSender()] = true;
-        emit Confirmation(_msgSender(), transactionId);
+        Confirmation(_msgSender(), transactionId);
         executeTransaction(transactionId);
     }
 
@@ -320,9 +395,9 @@ contract MultiSigPermission is Context {
             transactions[transactionId].executed = true;
             (bool success,) = transactions[transactionId].destination.call{value : transactions[transactionId].value}(transactions[transactionId].data);
             if (success)
-                emit Execution(transactionId);
+                Execution(transactionId);
             else {
-                emit ExecutionFailure(transactionId);
+                ExecutionFailure(transactionId);
                 transactions[transactionId].executed = false;
             }
         }
@@ -345,7 +420,7 @@ contract MultiSigPermission is Context {
             executed: false
         });
         transactionCount += 1;
-        emit Submission(transactionId);
+        Submission(transactionId);
     }
 
     function submitTransaction(address destination, uint value, bytes memory data)
@@ -365,7 +440,7 @@ contract MultiSigPermission is Context {
 
         isSignRole[signRoleAddress] = true;
         signRoleAddresses.push(signRoleAddress);
-        emit SignRoleAddition(signRoleAddress);
+        SignRoleAddition(signRoleAddress);
     }
 
 }
@@ -376,12 +451,12 @@ contract AdminRole is Context, MultiSigPermission {
     uint constant public REQUIRED_CONFIRMATIONS_COUNT = 2;
     
     constructor () MultiSigPermission(REQUIRED_CONFIRMATIONS_COUNT) {
-        addSignRole(address(0xD0183802Ca32a7a56dD929405087351aDFe519F3));
+        addSignRole(_msgSender());
         addSignRole(address(0x42586d48C29651f32FC65b8e1D1d0E6ebAD28206));
         addSignRole(address(0x160e529055D084add9634fE1c2059109c8CE044e));
     }
 
-    modifier onlyAdmin() {
+    modifier onlyOwnerOrAdmin() {
         require(checkSignRoleExists(_msgSender()), "you don't have permission to perform that action");
         _;
     }
@@ -455,7 +530,7 @@ library TxDataBuilder {
 
 
 
-contract WizRefund is Context, AdminRole {
+contract WizRefund is Context, Ownable, AdminRole {
     using SafeMath for uint256;
     
     modifier selfCall() {
@@ -632,7 +707,7 @@ contract WizRefund is Context, AdminRole {
     // This is a final distribution after phase 2 is fihished, everyone who left the
     // request with register() method will get remaining ETH amount
     // in proportion to their exchanged tokens
-    function startFinalDistribution(uint256 start_index, uint256 end_index) external onlyAdmin {
+    function startFinalDistribution(uint256 start_index, uint256 end_index) external onlyOwnerOrAdmin {
         require(end_index < getNumberOfParticipants());
         
         uint256 j = getCurrentPhaseIndex();
@@ -698,7 +773,7 @@ contract WizRefund is Context, AdminRole {
         sum_burnt_amount_registered  = sum_burnt_amount_registered.add(getBurntAmountByAddress(participant));
     }
 
-    function startNextPhase() external onlyAdmin {
+    function startNextPhase() external onlyOwnerOrAdmin {
         uint256 i = getCurrentPhaseIndex();
         require((i + 1) < PHASES_COUNT);
         require(phases[i].IS_FINISHED);
@@ -710,7 +785,7 @@ contract WizRefund is Context, AdminRole {
         }
     }
 
-    function finishCurrentPhase() external onlyAdmin {
+    function finishCurrentPhase() external onlyOwnerOrAdmin {
         uint256 i = getCurrentPhaseIndex();
         phases[i].IS_FINISHED = true;
     }
@@ -753,7 +828,7 @@ contract WizRefund is Context, AdminRole {
       
     function submitTx_withdrawETH(address payable recipient, uint256 value)
       public
-      onlyAdmin
+      onlyOwnerOrAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](2);
         f_args[0] = uint256(recipient);
@@ -764,7 +839,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_revertPhase()
       external
-      onlyAdmin
+      onlyOwnerOrAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](0);
         bytes memory data = TxDataBuilder.buildData(TxDataBuilder.RP_FUNCHASH, f_args);
@@ -773,7 +848,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_forceRegister(address payable participant)
       external
-      onlyAdmin
+      onlyOwnerOrAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](1);
         f_args[0] = uint256(participant);
@@ -783,7 +858,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_clearFinalWithdrawData(uint256 start_index, uint256 end_index)
       external
-      onlyAdmin
+      onlyOwnerOrAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](2);
         f_args[0] = start_index;
@@ -795,7 +870,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_refundTokensTransferredDirectly(address payable participant, uint256 value)
       external
-      onlyAdmin
+      onlyOwnerOrAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](2);
         f_args[0] = uint256(participant);
