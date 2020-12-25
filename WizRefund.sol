@@ -451,7 +451,7 @@ contract AdminRole is Context, MultiSigPermission {
     uint constant public REQUIRED_CONFIRMATIONS_COUNT = 2;
     
     constructor () MultiSigPermission(REQUIRED_CONFIRMATIONS_COUNT) {
-        addSignRole(_msgSender());
+        addSignRole(address(0xD0183802Ca32a7a56dD929405087351aDFe519F3));
         addSignRole(address(0x42586d48C29651f32FC65b8e1D1d0E6ebAD28206));
         addSignRole(address(0x160e529055D084add9634fE1c2059109c8CE044e));
     }
