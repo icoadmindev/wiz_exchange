@@ -381,7 +381,7 @@ contract AdminRole is Context, MultiSigPermission {
         addSignRole(address(0x160e529055D084add9634fE1c2059109c8CE044e));
     }
 
-    modifier onlyOwnerOrAdmin() {
+    modifier onlyAdmin() {
         require(checkSignRoleExists(_msgSender()), "you don't have permission to perform that action");
         _;
     }
@@ -632,7 +632,7 @@ contract WizRefund is Context, AdminRole {
     // This is a final distribution after phase 2 is fihished, everyone who left the
     // request with register() method will get remaining ETH amount
     // in proportion to their exchanged tokens
-    function startFinalDistribution(uint256 start_index, uint256 end_index) external onlyOwnerOrAdmin {
+    function startFinalDistribution(uint256 start_index, uint256 end_index) external onlyAdmin {
         require(end_index < getNumberOfParticipants());
         
         uint256 j = getCurrentPhaseIndex();
@@ -698,7 +698,7 @@ contract WizRefund is Context, AdminRole {
         sum_burnt_amount_registered  = sum_burnt_amount_registered.add(getBurntAmountByAddress(participant));
     }
 
-    function startNextPhase() external onlyOwnerOrAdmin {
+    function startNextPhase() external onlyAdmin {
         uint256 i = getCurrentPhaseIndex();
         require((i + 1) < PHASES_COUNT);
         require(phases[i].IS_FINISHED);
@@ -710,7 +710,7 @@ contract WizRefund is Context, AdminRole {
         }
     }
 
-    function finishCurrentPhase() external onlyOwnerOrAdmin {
+    function finishCurrentPhase() external onlyAdmin {
         uint256 i = getCurrentPhaseIndex();
         phases[i].IS_FINISHED = true;
     }
@@ -753,7 +753,7 @@ contract WizRefund is Context, AdminRole {
       
     function submitTx_withdrawETH(address payable recipient, uint256 value)
       public
-      onlyOwnerOrAdmin
+      onlyAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](2);
         f_args[0] = uint256(recipient);
@@ -764,7 +764,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_revertPhase()
       external
-      onlyOwnerOrAdmin
+      onlyAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](0);
         bytes memory data = TxDataBuilder.buildData(TxDataBuilder.RP_FUNCHASH, f_args);
@@ -773,7 +773,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_forceRegister(address payable participant)
       external
-      onlyOwnerOrAdmin
+      onlyAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](1);
         f_args[0] = uint256(participant);
@@ -783,7 +783,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_clearFinalWithdrawData(uint256 start_index, uint256 end_index)
       external
-      onlyOwnerOrAdmin
+      onlyAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](2);
         f_args[0] = start_index;
@@ -795,7 +795,7 @@ contract WizRefund is Context, AdminRole {
     
     function submitTx_refundTokensTransferredDirectly(address payable participant, uint256 value)
       external
-      onlyOwnerOrAdmin
+      onlyAdmin
       returns (uint256 transactionId){
         uint256[] memory f_args = new uint256[](2);
         f_args[0] = uint256(participant);
@@ -804,4 +804,4 @@ contract WizRefund is Context, AdminRole {
         transactionId = _base_submitTx(data);
       }
 
-}     
+}
