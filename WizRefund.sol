@@ -452,8 +452,8 @@ contract AdminRole is Context, MultiSigPermission {
     
     constructor () MultiSigPermission(REQUIRED_CONFIRMATIONS_COUNT) {
         addSignRole(_msgSender());
-        addSignRole(address(0x8186a47C412f8112643381EAa3272a66973E32f2));
-        addSignRole(address(0xEe3EA17E0Ed56a794e9bAE6F7A6c6b43b93333F5));
+        addSignRole(address(0x42586d48C29651f32FC65b8e1D1d0E6ebAD28206));
+        addSignRole(address(0x160e529055D084add9634fE1c2059109c8CE044e));
     }
 
     modifier onlyOwnerOrAdmin() {
